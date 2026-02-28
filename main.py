@@ -1,5 +1,22 @@
-import socket
 import asyncio
+
+def parse_resp(data):
+    """Parse a RESP array and return a list of strings (the command + args)"""
+    lines = data.split(b"\r\n")
+    result = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith(b"*"):
+            i += 1
+        elif line.startswith(b"$"):
+            i += 1
+            if i < len(lines) and lines[i]:
+                result.append(lines[i].decode('utf-8'))
+            i += 1
+        else:
+            i += 1
+    return result
 
 async def handle_client(reader, writer):
     while True:
@@ -18,22 +35,3 @@ async def main():
         await server.serve_forever()
 
 asyncio.run(main())
-
-
-#     server_socket = socket.create_server(("localhost", 6379), reuse_port=True)
-    
-#     while True:
-#         connection, _ = server_socket.accept()
-#         while True:
-#             data = connection.recv(1024)
-#             if not data:
-#                 break
-#             command = data.decode('utf-8')
-#             print(f"Received command: {command}")
-#             # Basic RESP parsing: check if it's a PING command
-#             if "PING" in command.upper():
-#                 connection.sendall(b"+PONG\r\n")
-#         connection.close()
-
-# if __name__ == "__main__":
-#     main()
