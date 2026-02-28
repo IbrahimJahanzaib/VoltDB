@@ -3,6 +3,7 @@ import time
 
 # global key-value store
 store = {}
+list_store = {}
 
 def parse_resp(data):
     """Parse a RESP array and return a list of strings (the command + args)"""
@@ -70,6 +71,15 @@ async def handle_client(reader, writer):
                     writer.write(f"${len(value)}\r\n{value}\r\n".encode())
             else:
                 writer.write(b"$-1\r\n")
+
+        elif command == "RPUSH" and len(parts) >= 3:
+            key = parts[1]
+            value = parts[2]
+            if key not in list_store:
+                list_store[key] = []
+            list_store[key].append(value)
+            count = len(list_store[key])
+            writer.write(f":{count}\r\n".encode())
 
         await writer.drain()
 
