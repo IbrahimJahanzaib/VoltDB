@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 # global key-value store
 store = {}
@@ -44,14 +45,29 @@ async def handle_client(reader, writer):
         
         elif command == "SET" and len(parts) >= 3:
             key, value = parts[1], parts[2]
-            store[key] = value
+            expiry = None
+
+            # check for PX or EX options
+            if len(parts) >= 5:
+                option = parts[3].upper()
+                if option == "PX":
+                    expiry = time.time() * 1000 + int(parts[4])
+                elif option == "EX":
+                    expiry = time.time() * 1000 + int(parts[4]) * 1000
+
+            store[key] = (value, expiry)
             writer.write(b"+OK]\r\n")
 
         elif command == "GET" and len(parts) >= 2:
             key = parts[1]
             if key in store:
-                value = store[key]
-                writer.write(f"${len(value)}\r\n{value}\r\n".encode())
+                value, expiry = store[key]
+                # check if expired
+                if expiry is not None and time.time() * 1000 > expiry:
+                    del store[key]
+                    writer.write(b"$-1\r\n")
+                else:
+                    writer.write(f"${len(value)}\r\n{value}\r\n".encode())
             else:
                 writer.write(b"$-1\r\n")
 
