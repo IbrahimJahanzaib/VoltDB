@@ -41,22 +41,3 @@ def handle_type(parts: list[str]) -> bytes:
     if key in store.stream_store:
         return encoder.simple_string("stream")
     return encoder.simple_string("none")
-
-
-def handle_incr(parts: list[str]) -> bytes:
-    if len(parts) < 2:
-        return encoder.error("ERR wrong number of arguments for INCR")
-    key = parts[1]
-
-    if key not in store.store:
-        store.store[key] = ("1", None)
-        return encoder.integer(1)
-
-    value, expiry = store.store[key]
-    try:
-        new_value = int(value) + 1
-    except ValueError:
-        return encoder.error("ERR value is not an integer or out of range")
-
-    store.store[key] = (str(new_value), expiry)
-    return encoder.integer(new_value)
