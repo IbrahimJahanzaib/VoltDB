@@ -15,7 +15,7 @@ def parse_resp(data):
             i += 1
         elif line.startswith(b"$"):
             i += 1
-            if i < len(lines) and lines[i]:
+            if i < len(lines):
                 result.append(lines[i].decode('utf-8'))
             i += 1
         else:
