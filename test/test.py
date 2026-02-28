@@ -70,7 +70,7 @@ def test_set_get():
     test("GET after overwrite",     send_command(s, "GET", "foo"),         "$3\r\nbaz\r\n")
     test("GET missing key",         send_command(s, "GET", "nonexistent"), "$-1\r\n")
     test("SET numeric value",       send_command(s, "SET", "num", "42"),   "+OK\r\n")
-    test("GET numeric value",       send_command(s, "GET", "num"),         "$3\r\n42\r\n")
+    test("GET numeric value",       send_command(s, "GET", "num"),         "$2\r\n42\r\n")
     test("SET empty value",         send_command(s, "SET", "empty", ""),   "+OK\r\n")
     test("GET empty value",         send_command(s, "GET", "empty"),       "$0\r\n\r\n")
     s.close()
@@ -112,10 +112,10 @@ def test_concurrent_clients():
     s2 = new_connection()
 
     send_command(s1, "SET", "shared", "from_s1")
-    test("client 2 sees client 1's write", send_command(s2, "GET", "shared"), "$9\r\nfrom_s1\r\n")
+    test("client 2 sees client 1's write", send_command(s2, "GET", "shared"), "$7\r\nfrom_s1\r\n")
 
     send_command(s2, "SET", "shared", "from_s2")
-    test("client 1 sees client 2's write", send_command(s1, "GET", "shared"), "$9\r\nfrom_s2\r\n")
+    test("client 1 sees client 2's write", send_command(s1, "GET", "shared"), "$7\r\nfrom_s2\r\n")
 
     test("client 1 PING", send_command(s1, "PING"), "+PONG\r\n")
     test("client 2 PING", send_command(s2, "PING"), "+PONG\r\n")
