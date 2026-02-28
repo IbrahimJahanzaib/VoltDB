@@ -40,7 +40,7 @@ async def handle_client(reader, writer):
         elif command == "ECHO" and len(parts) > 1:
             arg = parts[1]
             # encode as RESP bulk string: $<length>\r\n<data>\r\n
-            response = f"${len(arg)}\r'n{arg}\r\n".encode()
+            response = f"${len(arg)}\r\n{arg}\r\n".encode()
             writer.write(response)
         
         elif command == "SET" and len(parts) >= 3:
@@ -56,7 +56,7 @@ async def handle_client(reader, writer):
                     expiry = time.time() * 1000 + int(parts[4]) * 1000
 
             store[key] = (value, expiry)
-            writer.write(b"+OK]\r\n")
+            writer.write(b"+OK\r\n")
 
         elif command == "GET" and len(parts) >= 2:
             key = parts[1]
@@ -76,7 +76,7 @@ async def handle_client(reader, writer):
     writer.close()
 
 async def main():
-    server = await asyncio.start_server(handle_client, "localhost", 6379)
+    server = await asyncio.start_server(handle_client, "localhost", 6379, reuse_address=True)
     async with server:
         await server.serve_forever()
 
