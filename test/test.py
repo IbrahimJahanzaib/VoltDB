@@ -131,46 +131,47 @@ def test_rpush():
 def test_lrange():
     print("\n📦 LRANGE")
     s = new_connection()
-
-    # setup: ["a", "b", "c", "d", "e"]
     send_command(s, "RPUSH", "rangelist", "a", "b", "c", "d", "e")
-
     test("LRANGE full",
          send_command(s, "LRANGE", "rangelist", "0", "4"),
          "*5\r\n$1\r\na\r\n$1\r\nb\r\n$1\r\nc\r\n$1\r\nd\r\n$1\r\ne\r\n")
-
     test("LRANGE first two",
          send_command(s, "LRANGE", "rangelist", "0", "1"),
          "*2\r\n$1\r\na\r\n$1\r\nb\r\n")
-
     test("LRANGE middle",
          send_command(s, "LRANGE", "rangelist", "2", "4"),
          "*3\r\n$1\r\nc\r\n$1\r\nd\r\n$1\r\ne\r\n")
-
     test("LRANGE single element",
          send_command(s, "LRANGE", "rangelist", "2", "2"),
          "*1\r\n$1\r\nc\r\n")
-
     test("LRANGE stop out of bounds",
          send_command(s, "LRANGE", "rangelist", "0", "100"),
          "*5\r\n$1\r\na\r\n$1\r\nb\r\n$1\r\nc\r\n$1\r\nd\r\n$1\r\ne\r\n")
-
     test("LRANGE start out of bounds",
          send_command(s, "LRANGE", "rangelist", "10", "20"),
          "*0\r\n")
-
     test("LRANGE start greater than stop",
          send_command(s, "LRANGE", "rangelist", "3", "1"),
          "*0\r\n")
-
     test("LRANGE missing key",
          send_command(s, "LRANGE", "nokey", "0", "5"),
          "*0\r\n")
-
     test("lrange lowercase",
          send_command(s, "lrange", "rangelist", "0", "0"),
          "*1\r\n$1\r\na\r\n")
+    s.close()
 
+def test_llen():
+    print("\n📦 LLEN")
+    s = new_connection()
+    send_command(s, "RPUSH", "lenlist", "a", "b", "c", "d")
+    test("LLEN existing list",        send_command(s, "LLEN", "lenlist"),   ":4\r\n")
+    send_command(s, "RPUSH", "lenlist", "e")
+    test("LLEN after append",         send_command(s, "LLEN", "lenlist"),   ":5\r\n")
+    test("LLEN missing key",          send_command(s, "LLEN", "nokey"),     ":0\r\n")
+    test("llen lowercase",            send_command(s, "llen", "lenlist"),   ":5\r\n")
+    send_command(s, "RPUSH", "single", "only")
+    test("LLEN single element list",  send_command(s, "LLEN", "single"),    ":1\r\n")
     s.close()
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -193,6 +194,7 @@ if __name__ == "__main__":
     test_case_insensitive()
     test_rpush()
     test_lrange()
+    test_llen()
 
     print(f"\n{'='*40}")
     print(f"Results: {passed} passed, {failed} failed")
