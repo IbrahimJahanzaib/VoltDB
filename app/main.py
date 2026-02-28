@@ -74,12 +74,34 @@ async def handle_client(reader, writer):
 
         elif command == "RPUSH" and len(parts) >= 3:
             key = parts[1]
-            value = parts[2]
+            value = parts[2:]
             if key not in list_store:
                 list_store[key] = []
-            list_store[key].append(value)
+            list_store[key].extend(value)
             count = len(list_store[key])
             writer.write(f":{count}\r\n".encode())
+
+        elif command == "LRANGE" and len(parts) >= 4:
+            key = parts[1]
+            start = int(parts[2])
+            stop = int(parts[3])
+
+            if key not in list_store:
+                writer.write(b"*0\r\n")
+            else:
+                lst = list_store[key]
+
+                stop = min(stop, len(lst) - 1)
+                sliced = lst[start:stop + 1]
+
+                if not sliced or start > stop:
+                    writer.write(b"*0\r\n")
+                else:
+                    response = f"*{len(sliced)}\r\n"
+                    for item in sliced:
+                        response += f"${len(item)}\r\n{item}\r\n"
+                    writer.write(response.encode())
+
 
         await writer.drain()
 
