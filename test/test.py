@@ -156,6 +156,12 @@ def test_lrange():
     test("LRANGE missing key",
          send_command(s, "LRANGE", "nokey", "0", "5"),
          "*0\r\n")
+    test("LRANGE negative stop -1",
+         send_command(s, "LRANGE", "rangelist", "0", "-1"),
+         "*5\r\n$1\r\na\r\n$1\r\nb\r\n$1\r\nc\r\n$1\r\nd\r\n$1\r\ne\r\n")
+    test("LRANGE negative stop -2",
+         send_command(s, "LRANGE", "rangelist", "0", "-2"),
+         "*4\r\n$1\r\na\r\n$1\r\nb\r\n$1\r\nc\r\n$1\r\nd\r\n")
     test("lrange lowercase",
          send_command(s, "lrange", "rangelist", "0", "0"),
          "*1\r\n$1\r\na\r\n")
@@ -172,6 +178,24 @@ def test_llen():
     test("llen lowercase",            send_command(s, "llen", "lenlist"),   ":5\r\n")
     send_command(s, "RPUSH", "single", "only")
     test("LLEN single element list",  send_command(s, "LLEN", "single"),    ":1\r\n")
+    s.close()
+
+def test_lpop():
+    print("\n📦 LPOP")
+    s = new_connection()
+    send_command(s, "RPUSH", "poplist", "one", "two", "three", "four", "five")
+    test("LPOP first element",     send_command(s, "LPOP", "poplist"),  "$3\r\none\r\n")
+    test("LPOP second element",    send_command(s, "LPOP", "poplist"),  "$3\r\ntwo\r\n")
+    test("LPOP third element",     send_command(s, "LPOP", "poplist"),  "$5\r\nthree\r\n")
+    test("LRANGE after 3 LPOPs",
+         send_command(s, "LRANGE", "poplist", "0", "-1"),
+         "*2\r\n$4\r\nfour\r\n$4\r\nfive\r\n")
+    test("LLEN after 3 LPOPs",    send_command(s, "LLEN", "poplist"),  ":2\r\n")
+    test("LPOP missing key",       send_command(s, "LPOP", "nokey"),   "$-1\r\n")
+    test("lpop lowercase",         send_command(s, "lpop", "poplist"), "$4\r\nfour\r\n")
+    # pop until empty then check
+    send_command(s, "LPOP", "poplist")
+    test("LPOP empty list",        send_command(s, "LPOP", "poplist"), "$-1\r\n")
     s.close()
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -195,6 +219,7 @@ if __name__ == "__main__":
     test_rpush()
     test_lrange()
     test_llen()
+    test_lpop()
 
     print(f"\n{'='*40}")
     print(f"Results: {passed} passed, {failed} failed")
