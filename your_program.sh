@@ -1,2 +1,2 @@
 #!/bin/bash
-exec python app/main.py
+exec python3 -m app.main
