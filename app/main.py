@@ -80,7 +80,12 @@ async def handle_client(reader, writer):
                 writer.write(b"*0\r\n")
             else:
                 lst = list_store[key]
-                stop = min(stop, len(lst) - 1)
+                length = len(lst)
+                if start < 0:
+                    start = max(0, length + start)
+                if stop < 0:
+                    stop = length + stop
+                stop = min(stop, length - 1)
                 sliced = lst[start:stop + 1]
                 if not sliced or start > stop:
                     writer.write(b"*0\r\n")
@@ -94,6 +99,14 @@ async def handle_client(reader, writer):
             key = parts[1]
             count = len(list_store.get(key, []))
             writer.write(f":{count}\r\n".encode())
+
+        elif command == "LPOP" and len(parts) >= 2:
+            key = parts[1]
+            if key not in list_store or len(list_store[key]) == 0:
+                writer.write(b"$-1\r\n")
+            else:
+                element = list_store[key].pop(0)
+                writer.write(f"${len(element)}\r\n{element}\r\n".encode())
 
         await writer.drain()
 
