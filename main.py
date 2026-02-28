@@ -1,5 +1,8 @@
 import asyncio
 
+# global key-value store
+store = {}
+
 def parse_resp(data):
     """Parse a RESP array and return a list of strings (the command + args)"""
     lines = data.split(b"\r\n")
@@ -32,11 +35,25 @@ async def handle_client(reader, writer):
 
         if command == "PING":
             writer.write(b"+PONG\r\n")
+
         elif command == "ECHO" and len(parts) > 1:
             arg = parts[1]
             # encode as RESP bulk string: $<length>\r\n<data>\r\n
             response = f"${len(arg)}\r'n{arg}\r\n".encode()
             writer.write(response)
+        
+        elif command == "SET" and len(parts) >= 3:
+            key, value = parts[1], parts[2]
+            store[key] = value
+            writer.write(b"+OK]\r\n")
+
+        elif command == "GET" and len(parts) >= 2:
+            key = parts[1]
+            if key in store:
+                value = store[key]
+                writer.write(f"${len(value)}\r\n{value}\r\n".encode())
+            else:
+                writer.write(b"$-1\r\n")
 
         await writer.drain()
 
