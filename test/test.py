@@ -1,12 +1,12 @@
 import socket
 import time
 import sys
+import threading
 
 HOST = "localhost"
 PORT = 6379
 
 def send_command(sock, *args):
-    """Send a RESP command and return the raw response"""
     cmd = f"*{len(args)}\r\n"
     for arg in args:
         cmd += f"${len(arg)}\r\n{arg}\r\n"
@@ -16,7 +16,7 @@ def send_command(sock, *args):
 def new_connection():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((HOST, PORT))
-    s.settimeout(2)
+    s.settimeout(5)
     return s
 
 # ─── Test Helpers ────────────────────────────────────────────────────────────
@@ -184,18 +184,140 @@ def test_lpop():
     print("\n📦 LPOP")
     s = new_connection()
     send_command(s, "RPUSH", "poplist", "one", "two", "three", "four", "five")
-    test("LPOP first element",     send_command(s, "LPOP", "poplist"),  "$3\r\none\r\n")
-    test("LPOP second element",    send_command(s, "LPOP", "poplist"),  "$3\r\ntwo\r\n")
-    test("LPOP third element",     send_command(s, "LPOP", "poplist"),  "$5\r\nthree\r\n")
+    test("LPOP first element",     send_command(s, "LPOP", "poplist"),       "$3\r\none\r\n")
+    test("LPOP second element",    send_command(s, "LPOP", "poplist"),       "$3\r\ntwo\r\n")
+    test("LPOP third element",     send_command(s, "LPOP", "poplist"),       "$5\r\nthree\r\n")
     test("LRANGE after 3 LPOPs",
          send_command(s, "LRANGE", "poplist", "0", "-1"),
          "*2\r\n$4\r\nfour\r\n$4\r\nfive\r\n")
-    test("LLEN after 3 LPOPs",    send_command(s, "LLEN", "poplist"),  ":2\r\n")
-    test("LPOP missing key",       send_command(s, "LPOP", "nokey"),   "$-1\r\n")
-    test("lpop lowercase",         send_command(s, "lpop", "poplist"), "$4\r\nfour\r\n")
-    # pop until empty then check
+    test("LLEN after 3 LPOPs",    send_command(s, "LLEN", "poplist"),       ":2\r\n")
+    test("LPOP missing key",       send_command(s, "LPOP", "nokey"),        "$-1\r\n")
+    test("lpop lowercase",         send_command(s, "lpop", "poplist"),      "$4\r\nfour\r\n")
     send_command(s, "LPOP", "poplist")
-    test("LPOP empty list",        send_command(s, "LPOP", "poplist"), "$-1\r\n")
+    test("LPOP empty list",        send_command(s, "LPOP", "poplist"),      "$-1\r\n")
+    s.close()
+
+def test_lpop_multi():
+    print("\n📦 LPOP with count")
+    s = new_connection()
+    send_command(s, "RPUSH", "mlist", "one", "two", "three", "four", "five")
+    test("LPOP 2 elements",
+         send_command(s, "LPOP", "mlist", "2"),
+         "*2\r\n$3\r\none\r\n$3\r\ntwo\r\n")
+    test("LRANGE after LPOP 2",
+         send_command(s, "LRANGE", "mlist", "0", "-1"),
+         "*3\r\n$5\r\nthree\r\n$4\r\nfour\r\n$4\r\nfive\r\n")
+    test("LPOP count exceeds length",
+         send_command(s, "LPOP", "mlist", "100"),
+         "*3\r\n$5\r\nthree\r\n$4\r\nfour\r\n$4\r\nfive\r\n")
+    test("LRANGE after full pop",
+         send_command(s, "LRANGE", "mlist", "0", "-1"),
+         "*0\r\n")
+    s.close()
+
+def test_blpop():
+    print("\n📦 BLPOP")
+    s = new_connection()
+
+    # element already available
+    send_command(s, "RPUSH", "blist", "hello")
+    test("BLPOP element available",
+         send_command(s, "BLPOP", "blist", "1"),
+         "*2\r\n$5\r\nblist\r\n$5\r\nhello\r\n")
+
+    # timeout — no element added
+    s2 = new_connection()
+    s2.settimeout(3)
+    start = time.time()
+    test("BLPOP timeout returns null array",
+         send_command(s2, "BLPOP", "emptylist", "0.2"),
+         "*-1\r\n")
+    elapsed = time.time() - start
+    assert 0.1 < elapsed < 1.0, f"BLPOP timeout took unexpected time: {elapsed:.2f}s"
+    print(f"  ✅ PASS: BLPOP timeout duration (~{elapsed:.2f}s)")
+    s2.close()
+
+    # element pushed while blocked
+    s3 = new_connection()
+    s3.settimeout(3)
+    result = []
+
+    def blocking_client():
+        result.append(s3.recv(4096).decode())
+
+    # send BLPOP first (blocks)
+    cmd = "*3\r\n$6\r\nBLPOP\r\n$9\r\nwaitlist1\r\n$1\r\n2\r\n"
+    s3.sendall(cmd.encode())
+
+    # push from another connection after short delay
+    def push_later():
+        time.sleep(0.2)
+        sp = new_connection()
+        send_command(sp, "RPUSH", "waitlist1", "world")
+        sp.close()
+
+    t = threading.Thread(target=push_later)
+    t.start()
+    t.join()
+    time.sleep(0.1)
+
+    test("BLPOP unblocked by RPUSH",
+         s3.recv(4096).decode(),
+         "*2\r\n$9\r\nwaitlist1\r\n$5\r\nworld\r\n")
+    s3.close()
+    s.close()
+
+def test_type():
+    print("\n📦 TYPE")
+    s = new_connection()
+    send_command(s, "SET", "strkey", "hello")
+    test("TYPE string key",   send_command(s, "TYPE", "strkey"),   "+string\r\n")
+    send_command(s, "RPUSH", "listkey", "a", "b")
+    test("TYPE list key",     send_command(s, "TYPE", "listkey"),  "+list\r\n")
+    test("TYPE missing key",  send_command(s, "TYPE", "nokey"),    "+none\r\n")
+    send_command(s, "XADD", "streamkey", "1-1", "foo", "bar")
+    test("TYPE stream key",   send_command(s, "TYPE", "streamkey"), "+stream\r\n")
+    s.close()
+
+def test_xadd():
+    print("\n📦 XADD")
+    s = new_connection()
+
+    # basic add
+    test("XADD returns entry id",
+         send_command(s, "XADD", "mystream", "1-1", "foo", "bar"),
+         "$3\r\n1-1\r\n")
+
+    # add second entry
+    test("XADD second entry",
+         send_command(s, "XADD", "mystream", "2-1", "baz", "qux"),
+         "$3\r\n2-1\r\n")
+
+    # invalid: same id
+    test("XADD duplicate id",
+         send_command(s, "XADD", "mystream", "2-1", "a", "b"),
+         "-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n")
+
+    # invalid: smaller ms
+    test("XADD smaller ms",
+         send_command(s, "XADD", "mystream", "1-5", "a", "b"),
+         "-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n")
+
+    # invalid: 0-0
+    test("XADD 0-0 id",
+         send_command(s, "XADD", "mystream", "0-0", "a", "b"),
+         "-ERR The ID specified in XADD must be greater than 0-0\r\n")
+
+    # valid minimum id on new stream
+    test("XADD minimum valid id",
+         send_command(s, "XADD", "freshstream", "0-1", "x", "y"),
+         "$3\r\n0-1\r\n")
+
+    # type check
+    test("TYPE after XADD",
+         send_command(s, "TYPE", "mystream"),
+         "+stream\r\n")
+
     s.close()
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -220,6 +342,10 @@ if __name__ == "__main__":
     test_lrange()
     test_llen()
     test_lpop()
+    test_lpop_multi()
+    test_blpop()
+    test_type()
+    test_xadd()
 
     print(f"\n{'='*40}")
     print(f"Results: {passed} passed, {failed} failed")
