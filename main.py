@@ -23,10 +23,23 @@ async def handle_client(reader, writer):
         data = await reader.read(1024)
         if not data:
             break
-        command = data.decode('utf-8')
-        if "PING" in command.upper():
+
+        parts = parse_resp(data)
+        if not parts:
+            continue
+
+        command = parts[0].upper()
+
+        if command == "PING":
             writer.write(b"+PONG\r\n")
-            await writer.drain()
+        elif command == "ECHO" and len(parts) > 1:
+            arg = parts[1]
+            # encode as RESP bulk string: $<length>\r\n<data>\r\n
+            response = f"${len(arg)}\r'n{arg}\r\n".encode()
+            writer.write(response)
+
+        await writer.drain()
+
     writer.close()
 
 async def main():
