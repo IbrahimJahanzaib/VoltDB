@@ -1,12 +1,10 @@
 import asyncio
 import time
 
-# global key-value store
-store = {}
-list_store = {}
+store = {}       # key -> (value, expiry)
+list_store = {}  # key -> [list of values]
 
 def parse_resp(data):
-    """Parse a RESP array and return a list of strings (the command + args)"""
     lines = data.split(b"\r\n")
     result = []
     i = 0
@@ -40,22 +38,17 @@ async def handle_client(reader, writer):
 
         elif command == "ECHO" and len(parts) > 1:
             arg = parts[1]
-            # encode as RESP bulk string: $<length>\r\n<data>\r\n
-            response = f"${len(arg)}\r\n{arg}\r\n".encode()
-            writer.write(response)
-        
+            writer.write(f"${len(arg)}\r\n{arg}\r\n".encode())
+
         elif command == "SET" and len(parts) >= 3:
             key, value = parts[1], parts[2]
             expiry = None
-
-            # check for PX or EX options
             if len(parts) >= 5:
                 option = parts[3].upper()
                 if option == "PX":
                     expiry = time.time() * 1000 + int(parts[4])
                 elif option == "EX":
                     expiry = time.time() * 1000 + int(parts[4]) * 1000
-
             store[key] = (value, expiry)
             writer.write(b"+OK\r\n")
 
@@ -63,7 +56,6 @@ async def handle_client(reader, writer):
             key = parts[1]
             if key in store:
                 value, expiry = store[key]
-                # check if expired
                 if expiry is not None and time.time() * 1000 > expiry:
                     del store[key]
                     writer.write(b"$-1\r\n")
@@ -74,26 +66,22 @@ async def handle_client(reader, writer):
 
         elif command == "RPUSH" and len(parts) >= 3:
             key = parts[1]
-            value = parts[2:]
+            elements = parts[2:]
             if key not in list_store:
                 list_store[key] = []
-            list_store[key].extend(value)
-            count = len(list_store[key])
-            writer.write(f":{count}\r\n".encode())
+            list_store[key].extend(elements)
+            writer.write(f":{len(list_store[key])}\r\n".encode())
 
         elif command == "LRANGE" and len(parts) >= 4:
             key = parts[1]
             start = int(parts[2])
             stop = int(parts[3])
-
             if key not in list_store:
                 writer.write(b"*0\r\n")
             else:
                 lst = list_store[key]
-
                 stop = min(stop, len(lst) - 1)
                 sliced = lst[start:stop + 1]
-
                 if not sliced or start > stop:
                     writer.write(b"*0\r\n")
                 else:
@@ -102,13 +90,17 @@ async def handle_client(reader, writer):
                         response += f"${len(item)}\r\n{item}\r\n"
                     writer.write(response.encode())
 
+        elif command == "LLEN" and len(parts) >= 2:
+            key = parts[1]
+            count = len(list_store.get(key, []))
+            writer.write(f":{count}\r\n".encode())
 
         await writer.drain()
 
     writer.close()
 
 async def main():
-    server = await asyncio.start_server(handle_client, "localhost", 6379, reuse_address=True)
+    server = await asyncio.start_server(handle_client, "localhost", 6379)
     async with server:
         await server.serve_forever()
 
